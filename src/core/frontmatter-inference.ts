@@ -393,8 +393,13 @@ export function serializeFrontmatter(fm: InferredFrontmatter): string {
 
   const lines: string[] = ['---'];
 
-  // Title — quote if it contains special YAML chars
-  const needsQuote = /[:"'#\[\]{}|>&*!?,]/.test(fm.title);
+  // Title — quote when YAML might coerce it into a non-string scalar.
+  const needsQuote =
+    /[:"'#\[\]{}|>&*!?,]/.test(fm.title) ||
+    /^\d{4}-\d{2}-\d{2}(?:[Tt\s].*)?$/.test(fm.title.trim()) ||
+    /^[-+]?(?:\d+|\d+\.\d+)(?:[eE][-+]?\d+)?$/.test(fm.title.trim()) ||
+    /^(?:true|false|null|~|yes|no|on|off)$/i.test(fm.title.trim()) ||
+    fm.title.trim() !== fm.title;
   lines.push(`title: ${needsQuote ? JSON.stringify(fm.title) : fm.title}`);
 
   lines.push(`type: ${fm.type}`);
