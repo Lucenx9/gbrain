@@ -486,11 +486,10 @@ const get_page: Operation = {
     }
 
     // v0.37.0 (D11): op-layer write-back for the `last_retrieved_at` stale
-    // signal. Fire-and-forget — caller does NOT await. Internal callers
-    // (sync, migrations, dream cycle) bypass this op handler so the signal
-    // stays clean. Throttled to ~1 write / 5 min per page via the SQL clause
-    // inside bumpLastRetrievedAt (D2).
-    bumpLastRetrievedAt(ctx.engine, [page.id]);
+    // signal. Internal callers (sync, migrations, dream cycle) bypass this op
+    // handler so the signal stays clean. Throttled to ~1 write / 5 min per page
+    // via the SQL clause inside bumpLastRetrievedAt (D2).
+    await bumpLastRetrievedAt(ctx.engine, [page.id]);
 
     const tags = await ctx.engine.getTags(page.slug, sourceOpts);
     // Privacy boundary for the per-token allow-list (v0.28.6 for takes,
@@ -1219,10 +1218,10 @@ const search: Operation = {
     const results = dedupResults(raw);
     const latency_ms = Date.now() - startedAt;
 
-    // v0.37.0 (D11): op-layer last_retrieved_at write-back. Fire-and-forget;
-    // results already returned by engine, this just marks them as user-surfaced
-    // for LSD's stale-page signal. 5-min throttle inside bumpLastRetrievedAt.
-    bumpLastRetrievedAt(ctx.engine, results.map((r) => r.page_id));
+    // v0.37.0 (D11): op-layer last_retrieved_at write-back. Results already
+    // returned by engine; this just marks them as user-surfaced for LSD's
+    // stale-page signal. 5-min throttle inside bumpLastRetrievedAt.
+    await bumpLastRetrievedAt(ctx.engine, results.map((r) => r.page_id));
 
     // Op-layer capture (v0.25.0). Fire-and-forget — no await on the
     // capture call so MCP response latency is unaffected. search has
@@ -1421,8 +1420,8 @@ const query: Operation = {
     const latency_ms = Date.now() - startedAt;
 
     // v0.37.0 (D11): op-layer last_retrieved_at write-back. Same shape as the
-    // search handler — fire-and-forget, internal callers bypass this path.
-    bumpLastRetrievedAt(ctx.engine, results.map((r) => r.page_id));
+    // search handler; internal callers bypass this path.
+    await bumpLastRetrievedAt(ctx.engine, results.map((r) => r.page_id));
 
     // Op-layer capture (v0.25.0). Fire-and-forget. meta tells gbrain-evals
     // what hybridSearch *actually* did so replay can distinguish "with API

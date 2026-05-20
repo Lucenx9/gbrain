@@ -27,10 +27,9 @@
  *   somehow reaches this code (column missing → SQLSTATE 42703) and a
  *   transient connection error.
  *
- * - Fire-and-forget. Caller does NOT await; the UPDATE runs concurrently
- *   with response serialization. If the caller awaited, a slow UPDATE
- *   would add latency to the visible response. Best-effort + concurrent =
- *   the user never sees the write-back cost in the response time.
+ * - Best-effort but awaitable. Early v0.37 made this fire-and-forget, but
+ *   local PGLite CLI processes can otherwise close the engine while the
+ *   write-back is still running, leaving the process hung after output.
  */
 
 import type { BrainEngine } from './engine.ts';
@@ -68,38 +67,34 @@ export function _resetTrackRetrievalCacheForTests(): void {
 }
 
 /**
- * Bump `last_retrieved_at` on the given page_ids. Fire-and-forget — caller
- * MUST NOT await this for the op response. Empty ids list is a no-op.
+ * Bump `last_retrieved_at` on the given page_ids. Empty ids list is a no-op.
  *
  * @param engine The BrainEngine handling the op.
  * @param pageIds The page ids surfaced by the op (search hits, query results,
  *   or the single id returned by get_page).
  */
-export function bumpLastRetrievedAt(engine: BrainEngine, pageIds: number[]): void {
+export async function bumpLastRetrievedAt(engine: BrainEngine, pageIds: number[]): Promise<void> {
   if (pageIds.length === 0) return;
-  // Fire-and-forget on purpose. We deliberately do NOT return the promise.
-  void (async () => {
-    try {
-      const enabled = await isTrackingEnabled(engine);
-      if (!enabled) return;
-      // 5-minute throttle (D2) + best-effort. The UPDATE is idempotent:
-      // setting last_retrieved_at = NOW() multiple times in a row is the
-      // same as setting it once (TIMESTAMPTZ comparison is monotonic).
-      await engine.executeRaw(
-        `UPDATE pages
-           SET last_retrieved_at = NOW()
-           WHERE id = ANY($1::int[])
-             AND (last_retrieved_at IS NULL
-                  OR last_retrieved_at < NOW() - INTERVAL '5 minutes')`,
-        [pageIds]
-      );
-    } catch (err) {
-      // Pre-v77 brain (column missing) falls through silently — the search
-      // op already returned, the LSD signal just stays NULL until upgrade.
-      if (isUndefinedColumnError(err, 'last_retrieved_at')) return;
-      // Other errors: stderr-warn but don't break the op response.
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[last-retrieved] write-back failed (best-effort): ${msg}`);
-    }
-  })();
+  try {
+    const enabled = await isTrackingEnabled(engine);
+    if (!enabled) return;
+    // 5-minute throttle (D2) + best-effort. The UPDATE is idempotent:
+    // setting last_retrieved_at = NOW() multiple times in a row is the
+    // same as setting it once (TIMESTAMPTZ comparison is monotonic).
+    await engine.executeRaw(
+      `UPDATE pages
+         SET last_retrieved_at = NOW()
+         WHERE id = ANY($1::int[])
+           AND (last_retrieved_at IS NULL
+                OR last_retrieved_at < NOW() - INTERVAL '5 minutes')`,
+      [pageIds]
+    );
+  } catch (err) {
+    // Pre-v77 brain (column missing) falls through silently — the search
+    // op already returned, the LSD signal just stays NULL until upgrade.
+    if (isUndefinedColumnError(err, 'last_retrieved_at')) return;
+    // Other errors: stderr-warn but don't break the op response.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[last-retrieved] write-back failed (best-effort): ${msg}`);
+  }
 }
