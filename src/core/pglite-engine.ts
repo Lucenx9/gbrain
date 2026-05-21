@@ -218,19 +218,33 @@ export class PGLiteEngine implements BrainEngine {
     // installs and modern brains.
     await this.applyForwardReferenceBootstrap();
 
-    // Resolve embedding dim/model from gateway. v0.37 fix wave: fallbacks
-    // track the canonical defaults in `ai/defaults.ts` (zeroentropyai:zembed-1
-    // / 1280d) instead of the stale v0.13 OpenAI literals, AND we store the
-    // full `provider:model` string in the DB config table — consumers like
-    // ze-switch, doctor, and recommendation-context expect the provider
-    // prefix. (Round-1 CDX-4 + A.8.)
+    // Resolve embedding dim/model from gateway. During migration runners the
+    // gateway may not be configured yet, so fall back to the persisted brain
+    // config before using canonical defaults. Otherwise a 4096d PGLite brain
+    // can replay the default schema and try to build an invalid HNSW index on
+    // the existing high-dimensional column.
     let dims: number = DEFAULT_EMBEDDING_DIMENSIONS;
     let model: string = DEFAULT_EMBEDDING_MODEL;
     try {
       const gw = await import('./ai/gateway.ts');
       dims = gw.getEmbeddingDimensions();
       model = gw.getEmbeddingModel() || model;
-    } catch { /* gateway not configured — use defaults */ }
+    } catch {
+      try {
+        const storedDims = parseInt(await this.getConfig('embedding_dimensions') || '', 10);
+        if (Number.isInteger(storedDims) && storedDims > 0) dims = storedDims;
+        const storedModel = await this.getConfig('embedding_model');
+        if (storedModel) model = storedModel;
+      } catch {
+        try {
+          const { loadConfig } = await import('./config.ts');
+          const cfg = loadConfig();
+          const cfgDims = cfg?.embedding_dimensions;
+          if (typeof cfgDims === 'number' && Number.isInteger(cfgDims) && cfgDims > 0) dims = cfgDims;
+          if (cfg?.embedding_model) model = cfg.embedding_model;
+        } catch { /* gateway/config unavailable — use legacy defaults */ }
+      }
+    }
 
     await this.db.exec(getPGLiteSchema(dims, model));
 

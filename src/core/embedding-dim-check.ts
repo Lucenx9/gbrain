@@ -201,7 +201,7 @@ export function embeddingMismatchMessage(opts: EmbeddingMismatchOpts): string {
   const supportsHnsw = requestedDims <= PGVECTOR_HNSW_VECTOR_MAX_DIMS;
   const reindexLine = supportsHnsw
     ? `CREATE INDEX IF NOT EXISTS idx_chunks_embedding\n  ON content_chunks USING hnsw (embedding vector_cosine_ops);`
-    : `-- Skip reindex. dims=${requestedDims} exceeds pgvector's HNSW cap of ${PGVECTOR_HNSW_VECTOR_MAX_DIMS};\n-- searchVector falls back to exact scan.`;
+    : `-- Skip reindex. dims=${requestedDims} exceeds pgvector's HNSW cap of ${PGVECTOR_HNSW_VECTOR_MAX_DIMS}\n-- searchVector falls back to exact scan.`;
 
   const modelArg = requestedModel ? ` --embedding-model ${requestedModel}` : '';
   const lines = [

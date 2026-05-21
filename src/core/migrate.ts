@@ -2282,7 +2282,7 @@ export const MIGRATIONS: Migration[] = [
         ? `CREATE INDEX IF NOT EXISTS idx_facts_embedding_hnsw
           ON facts USING hnsw (embedding ${opclass})
           WHERE embedding IS NOT NULL AND expired_at IS NULL;`
-        : `-- idx_facts_embedding_hnsw skipped: ${vecType}(${embeddingDim}) exceeds pgvector HNSW max ${hnswMaxDims}; exact scans remain available.`;
+        : `-- idx_facts_embedding_hnsw skipped: ${vecType}(${embeddingDim}) exceeds pgvector HNSW max ${hnswMaxDims} - exact scans remain available.`;
       // FK to sources is added in a separate ALTER TABLE rather than inline
       // on the column. Inline `REFERENCES` worked on PGLite but silently
       // got dropped by postgres.js's `unsafe()` multi-statement path on
@@ -2877,7 +2877,7 @@ export const MIGRATIONS: Migration[] = [
         ? `CREATE INDEX IF NOT EXISTS idx_query_cache_embedding_hnsw
           ON query_cache USING hnsw (embedding ${opclass})
           WHERE embedding IS NOT NULL;`
-        : `-- idx_query_cache_embedding_hnsw skipped: ${vecType}(${embeddingDim}) exceeds pgvector HNSW max ${hnswMaxDims}; exact scans remain available.`;
+        : `-- idx_query_cache_embedding_hnsw skipped: ${vecType}(${embeddingDim}) exceeds pgvector HNSW max ${hnswMaxDims} - exact scans remain available.`;
 
       const ddl = `
         CREATE TABLE IF NOT EXISTS query_cache (
